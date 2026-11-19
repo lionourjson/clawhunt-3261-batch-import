@@ -1,0 +1,126 @@
+{
+ "platform": "会员空间平台（虚构演示）",
+ "note": "现库字典初始状态（全部虚构）。IND-MANU-OLD 为已软删除标签（deleted_at 非空），用于冲突场景演示。",
+ "tags": [
+  {
+   "code": "IND-FIN",
+   "name": "金融服务",
+   "parent_code": null,
+   "definition": "银行、证券、保险等金融服务会员企业（虚构）",
+   "aliases": ["金融"],
+   "sort_order": 30,
+   "status": "active",
+   "deleted_at": null
+  },
+  {
+   "code": "IND-IT",
+   "name": "信息技术",
+   "parent_code": null,
+   "definition": "信息技术相关会员企业（虚构）",
+   "aliases": ["IT", "科技"],
+   "sort_order": 20,
+   "status": "active",
+   "deleted_at": null
+  },
+  {
+   "code": "IND-IT-HARD",
+   "name": "智能硬件",
+   "parent_code": "IND-IT",
+   "definition": "智能硬件制造会员企业（虚构）",
+   "aliases": [],
+   "sort_order": 22,
+   "status": "active",
+   "deleted_at": null
+  },
+  {
+   "code": "IND-IT-SOFT",
+   "name": "软件服务",
+   "parent_code": "IND-IT",
+   "definition": "软件开发与信息服务（虚构）",
+   "aliases": [],
+   "sort_order": 21,
+   "status": "active",
+   "deleted_at": null
+  },
+  {
+   "code": "IND-MANU",
+   "name": "制造业",
+   "parent_code": null,
+   "definition": "制造行业会员企业（虚构）",
+   "aliases": ["生产制造"],
+   "sort_order": 10,
+   "status": "active",
+   "deleted_at": null
+  },
+  {
+   "code": "IND-MANU-AUTO",
+   "name": "汽车制造",
+   "parent_code": "IND-MANU",
+   "definition": "汽车及零部件制造会员企业（虚构）",
+   "aliases": [],
+   "sort_order": 11,
+   "status": "active",
+   "deleted_at": null
+  },
+  {
+   "code": "IND-MANU-OLD",
+   "name": "老旧制造业",
+   "parent_code": "IND-MANU",
+   "definition": "已淘汰行业分类（虚构，演示软删除）",
+   "aliases": [],
+   "sort_order": 13,
+   "status": "active",
+   "deleted_at": "2026-09-30"
+  },
+  {
+   "code": "IND-MANU-TEX",
+   "name": "纺织制造",
+   "parent_code": "IND-MANU",
+   "definition": "纺织服装制造会员企业（虚构）",
+   "aliases": [],
+   "sort_order": 12,
+   "status": "active",
+   "deleted_at": null
+  },
+  {
+   "code": "SVC-DESIGN",
+   "name": "设计服务",
+   "parent_code": null,
+   "definition": "创意与设计服务会员企业（虚构）",
+   "aliases": ["创意设计"],
+   "sort_order": 50,
+   "status": "active",
+   "deleted_at": null
+  },
+  {
+   "code": "SVC-EVENT",
+   "name": "活动服务",
+   "parent_code": "SVC-SPACE",
+   "definition": "企业活动与会务服务（虚构）",
+   "aliases": ["会务"],
+   "sort_order": 42,
+   "status": "active",
+   "deleted_at": null
+  },
+  {
+   "code": "SVC-SPACE",
+   "name": "空间服务",
+   "parent_code": null,
+   "definition": "空间相关服务会员企业（虚构）",
+   "aliases": [],
+   "sort_order": 40,
+   "status": "active",
+   "deleted_at": null
+  },
+  {
+   "code": "SVC-SPACE-OFFICE",
+   "name": "办公空间",
+   "parent_code": "SVC-SPACE",
+   "definition": "办公空间租赁与服务（虚构）",
+   "aliases": [],
+   "sort_order": 41,
+   "status": "active",
+   "deleted_at": null
+  }
+ ]
+}

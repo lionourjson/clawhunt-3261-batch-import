@@ -1,0 +1,15 @@
+code,name,parent_code,definition,aliases,sort_order
+IND-ENE,新能源产业,,新能源相关会员企业（虚构）,清洁能源;储能,60
+IND-ENE-PV,光伏制造,IND-ENE,光伏制造相关会员企业（虚构）,,61
+SVC-SPACE-COWORK,共享会议空间,SVC-SPACE,共享会议空间服务（虚构）,会议室,43
+IND-FIN,金融服务,,银行、证券、保险等金融服务会员企业（虚构，定义 v2）,金融,30
+SVC-EVENT,活动服务,SVC-SPACE,企业活动与会务服务（虚构）,会务,45
+IND-IT,信息技术,,信息技术相关会员企业（虚构）,IT;科技,20
+IND-IT-SOFT,软件服务,IND-IT,软件开发与信息服务（虚构）,,21
+IND-IT-SOFT,企业软件服务,IND-IT,企业级软件服务（虚构）,,21
+SVC-DESIGN-PRO,设计服务,SVC-SPACE,产品设计服务（虚构）,,52
+IND-MANU-OLD,老旧制造业,IND-MANU,已淘汰行业分类（虚构）,,13
+,无编码行,,缺少编码的演示行,,99
+IND-BAD-SORT,排序异常行,,排序字段非法演示（虚构）,,abc
+IND-ORPHAN,孤儿行业行,IND-XX9,父编码不存在演示（虚构）,,62
+SVC-LOOP,自指父级行,SVC-LOOP,父编码等于自身演示（虚构）,,63

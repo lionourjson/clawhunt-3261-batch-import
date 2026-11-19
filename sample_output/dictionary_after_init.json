@@ -1,0 +1,172 @@
+{
+ "asof": "2026-11-18",
+ "platform": "会员空间平台（虚构演示）",
+ "tags": [
+  {
+   "aliases": [
+    "清洁能源",
+    "储能"
+   ],
+   "code": "IND-ENE",
+   "definition": "新能源相关会员企业（虚构）",
+   "deleted_at": null,
+   "name": "新能源产业",
+   "parent_code": null,
+   "sort_order": 60,
+   "status": "active"
+  },
+  {
+   "aliases": [],
+   "code": "IND-ENE-PV",
+   "definition": "光伏制造相关会员企业（虚构）",
+   "deleted_at": null,
+   "name": "光伏制造",
+   "parent_code": "IND-ENE",
+   "sort_order": 61,
+   "status": "active"
+  },
+  {
+   "aliases": [
+    "金融"
+   ],
+   "code": "IND-FIN",
+   "definition": "银行、证券、保险等金融服务会员企业（虚构，定义 v2）",
+   "deleted_at": null,
+   "name": "金融服务",
+   "parent_code": null,
+   "sort_order": 30,
+   "status": "active"
+  },
+  {
+   "aliases": [
+    "IT",
+    "科技"
+   ],
+   "code": "IND-IT",
+   "definition": "信息技术相关会员企业（虚构）",
+   "deleted_at": null,
+   "name": "信息技术",
+   "parent_code": null,
+   "sort_order": 20,
+   "status": "active"
+  },
+  {
+   "aliases": [],
+   "code": "IND-IT-HARD",
+   "definition": "智能硬件制造会员企业（虚构）",
+   "deleted_at": null,
+   "name": "智能硬件",
+   "parent_code": "IND-IT",
+   "sort_order": 22,
+   "status": "active"
+  },
+  {
+   "aliases": [],
+   "code": "IND-IT-SOFT",
+   "definition": "软件开发与信息服务（虚构）",
+   "deleted_at": null,
+   "name": "软件服务",
+   "parent_code": "IND-IT",
+   "sort_order": 21,
+   "status": "active"
+  },
+  {
+   "aliases": [
+    "生产制造"
+   ],
+   "code": "IND-MANU",
+   "definition": "制造行业会员企业（虚构）",
+   "deleted_at": null,
+   "name": "制造业",
+   "parent_code": null,
+   "sort_order": 10,
+   "status": "active"
+  },
+  {
+   "aliases": [],
+   "code": "IND-MANU-AUTO",
+   "definition": "汽车及零部件制造会员企业（虚构）",
+   "deleted_at": null,
+   "name": "汽车制造",
+   "parent_code": "IND-MANU",
+   "sort_order": 11,
+   "status": "active"
+  },
+  {
+   "aliases": [],
+   "code": "IND-MANU-OLD",
+   "definition": "已淘汰行业分类（虚构，演示软删除）",
+   "deleted_at": "2026-09-30",
+   "name": "老旧制造业",
+   "parent_code": "IND-MANU",
+   "sort_order": 13,
+   "status": "active"
+  },
+  {
+   "aliases": [],
+   "code": "IND-MANU-TEX",
+   "definition": "纺织服装制造会员企业（虚构）",
+   "deleted_at": null,
+   "name": "纺织制造",
+   "parent_code": "IND-MANU",
+   "sort_order": 12,
+   "status": "active"
+  },
+  {
+   "aliases": [
+    "创意设计"
+   ],
+   "code": "SVC-DESIGN",
+   "definition": "创意与设计服务会员企业（虚构）",
+   "deleted_at": null,
+   "name": "设计服务",
+   "parent_code": null,
+   "sort_order": 50,
+   "status": "active"
+  },
+  {
+   "aliases": [
+    "会务"
+   ],
+   "code": "SVC-EVENT",
+   "definition": "企业活动与会务服务（虚构）",
+   "deleted_at": null,
+   "name": "活动服务",
+   "parent_code": "SVC-SPACE",
+   "sort_order": 45,
+   "status": "active"
+  },
+  {
+   "aliases": [],
+   "code": "SVC-SPACE",
+   "definition": "空间相关服务会员企业（虚构）",
+   "deleted_at": null,
+   "name": "空间服务",
+   "parent_code": null,
+   "sort_order": 40,
+   "status": "active"
+  },
+  {
+   "aliases": [
+    "会议室"
+   ],
+   "code": "SVC-SPACE-COWORK",
+   "definition": "共享会议空间服务（虚构）",
+   "deleted_at": null,
+   "name": "共享会议空间",
+   "parent_code": "SVC-SPACE",
+   "sort_order": 43,
+   "status": "active"
+  },
+  {
+   "aliases": [],
+   "code": "SVC-SPACE-OFFICE",
+   "definition": "办公空间租赁与服务（虚构）",
+   "deleted_at": null,
+   "name": "办公空间",
+   "parent_code": "SVC-SPACE",
+   "sort_order": 41,
+   "status": "active"
+  }
+ ]
+}

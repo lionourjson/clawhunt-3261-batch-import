@@ -1,0 +1,16 @@
+{
+ "logs": {
+  "f6e78561e7b9477bd4e6278c32c03c24dff55ebfb87ef71bd444442b31c37c89": {
+   "applied_add": 3,
+   "applied_update": 2,
+   "asof": "2026-11-18",
+   "mode": "init",
+   "note": "冲突与错误的行一律不导入；重复导入同一文件 applied=0（幂等）",
+   "skipped_conflicts": 4,
+   "skipped_errors": 4,
+   "source_file": "import_v1.csv",
+   "source_hash": "f6e78561e7b9477bd4e6278c32c03c24dff55ebfb87ef71bd444442b31c37c89"
+  }
+ },
+ "platform": "会员空间平台（虚构演示）"
+}

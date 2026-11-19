@@ -1,0 +1,16 @@
+[
+  {"code": "IND-ENE", "name": "新能源产业", "parent_code": null, "definition": "新能源相关会员企业（虚构）", "aliases": ["清洁能源", "储能"], "sort_order": 60},
+  {"code": "IND-ENE-PV", "name": "光伏制造", "parent_code": "IND-ENE", "definition": "光伏制造相关会员企业（虚构）", "aliases": [], "sort_order": 61},
+  {"code": "SVC-SPACE-COWORK", "name": "共享会议空间", "parent_code": "SVC-SPACE", "definition": "共享会议空间服务（虚构）", "aliases": ["会议室"], "sort_order": 43},
+  {"code": "IND-FIN", "name": "金融服务", "parent_code": null, "definition": "银行、证券、保险等金融服务会员企业（虚构，定义 v2）", "aliases": ["金融"], "sort_order": 30},
+  {"code": "SVC-EVENT", "name": "活动服务", "parent_code": "SVC-SPACE", "definition": "企业活动与会务服务（虚构）", "aliases": ["会务"], "sort_order": 45},
+  {"code": "IND-IT", "name": "信息技术", "parent_code": null, "definition": "信息技术相关会员企业（虚构）", "aliases": ["IT", "科技"], "sort_order": 20},
+  {"code": "IND-IT-SOFT", "name": "软件服务", "parent_code": "IND-IT", "definition": "软件开发与信息服务（虚构）", "aliases": [], "sort_order": 21},
+  {"code": "IND-IT-SOFT", "name": "企业软件服务", "parent_code": "IND-IT", "definition": "企业级软件服务（虚构）", "aliases": [], "sort_order": 21},
+  {"code": "SVC-DESIGN-PRO", "name": "设计服务", "parent_code": "SVC-SPACE", "definition": "产品设计服务（虚构）", "aliases": [], "sort_order": 52},
+  {"code": "IND-MANU-OLD", "name": "老旧制造业", "parent_code": "IND-MANU", "definition": "已淘汰行业分类（虚构）", "aliases": [], "sort_order": 13},
+  {"code": "", "name": "无编码行", "parent_code": null, "definition": "缺少编码的演示行", "aliases": [], "sort_order": 99},
+  {"code": "IND-BAD-SORT", "name": "排序异常行", "parent_code": null, "definition": "排序字段非法演示（虚构）", "aliases": [], "sort_order": "abc"},
+  {"code": "IND-ORPHAN", "name": "孤儿行业行", "parent_code": "IND-XX9", "definition": "父编码不存在演示（虚构）", "aliases": [], "sort_order": 62},
+  {"code": "SVC-LOOP", "name": "自指父级行", "parent_code": "SVC-LOOP", "definition": "父编码等于自身演示（虚构）", "aliases": [], "sort_order": 63}
+]
