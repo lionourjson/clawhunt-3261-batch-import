@@ -249,6 +249,27 @@ class ImportApiTest(unittest.TestCase):
         self.assertEqual(rep["counts"]["total_rows"], 0)
         self.assertFalse(any(rep[k] for k in ("will_add", "will_update", "conflicts", "errors")))
 
+    # ---------- 依赖失败 fail-closed：现库文件桩缺失 -> 500（明确报错，不静默导入） ----------
+    def test_missing_existing_stub_500(self):
+        # 现库字典桩不存在：dry-run 与 init 都 500 并点名环境变量 TAXO_IMPORT_EXISTING；
+        # 非管理员仍先被 403（权限校验先于数据访问）；失败路径不写队列/日志
+        client = TestClient(create_app(
+            existing_path=os.path.join(self.tmp.name, "nope.json"),
+            queue_path=self.queue, log_path=self.log))
+        r_editor = client.post("/admin/taxonomy/import:init", content=_read_bytes(CSV_FILE),
+                               headers={"Content-Type": "text/csv", **EDITOR})
+        self.assertEqual(r_editor.status_code, 403, r_editor.text)
+        r1 = client.post("/admin/taxonomy/import:dry-run",
+                         files={"file": ("import_v1.csv", _read_bytes(CSV_FILE), "text/csv")})
+        self.assertEqual(r1.status_code, 500, r1.text)
+        self.assertIn("TAXO_IMPORT_EXISTING", r1.json()["detail"])
+        r2 = client.post("/admin/taxonomy/import:init", content=_read_bytes(CSV_FILE),
+                         headers={"Content-Type": "text/csv", **ADMIN})
+        self.assertEqual(r2.status_code, 500, r2.text)
+        self.assertIn("TAXO_IMPORT_EXISTING", r2.json()["detail"])
+        self.assertFalse(os.path.exists(self.queue), "失败路径不得写复核队列")
+        self.assertFalse(os.path.exists(self.log), "失败路径不得写导入日志")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

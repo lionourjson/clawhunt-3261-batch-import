@@ -24,7 +24,7 @@
 | `existing_dictionary.json` | 现库字典初始状态（12 个虚构标签，含 1 个软删除标签 IND-MANU-OLD） |
 | `import_v1.csv` / `import_v1.json` | 同一内容的两种格式样例导入文件（14 行，覆盖四类清单全部场景） |
 | `test_batch_import.py` | 单元测试 20 条（AC1/AC2/AC3、冲突三类、双格式一致、提议幂等、管理员门禁、fail-closed、父级级联五类场景） |
-| `test_api.py` | 接口层测试 11 条（三条验收标准在接口上的表现、init 权限桩、接口与 CLI 逐字段一致、级联在接口生效、坏输入 400） |
+| `test_api.py` | 接口层测试 12 条（三条验收标准在接口上的表现、init 权限桩、接口与 CLI 逐字段一致、级联在接口生效、坏输入 400、现库桩缺失 500 fail-closed） |
 | `verify_3261.py` | 自检脚本：CLI 真实运行 + 接口真实调用 + 手工判定逐行对照 + 幂等 + 负例 + 敏感扫描，`EXIT=0` 即通过 |
 | `requirements.txt` | 接口层依赖（fastapi、httpx、uvicorn、python-multipart）；命令行本身仅用标准库 |
 | `README.md` | 本文件 |
@@ -89,6 +89,7 @@ curl -s -X POST http://127.0.0.1:8321/admin/taxonomy/import:init \
 - 预演/初始化返回的报告字段与命令行 `--report` 文件完全一致（`test_dry_run_matches_cli` 逐字段断言）；
 - 坏表头、非 JSON 数组、不支持的扩展名、空请求体一律 `400`（fail-closed，不落盘）；
 - 非系统管理员调 `import:init` 返回 `403`，现库文件桩与导入日志都不被改动；
+- 现库字典文件桩缺失时返回 `500` 并点名环境变量 `TAXO_IMPORT_EXISTING`，不写队列与日志（`test_missing_existing_stub_500`）；
 - `403` 与进程环境变量无关：同一进程内不同请求带不同 `X-User` / `X-User-Roles` 即得不同结果（`test_init_requires_admin_caller`）。
 
 ## 5. 分类口径与样例手工判定表
@@ -155,10 +156,10 @@ S2-CRM「字典与标签中心」的 `taxonomy_tags` 标签表（统一字段 id
 pip install -r requirements.txt
 python -I verify_3261.py        # 自检 EXIT=0（CLI + 接口 + 幂等 + 负例 + 敏感扫描；同时重新生成 sample_output/）
 python -I test_batch_import.py  # 单元测试 20 条 OK
-python -I test_api.py           # 接口层测试 11 条 OK
+python -I test_api.py           # 接口层测试 12 条 OK
 ```
 
-用 pytest 跑也行：`python -m pytest -q` → 31 passed（20 + 11）。
+用 pytest 跑也行：`python -m pytest -q` → 32 passed（20 + 12）。
 有一条与本仓库代码无关的环境警告：`StarletteDeprecationWarning: Using httpx with starlette.testclient is deprecated`
 来自当前环境的 starlette 1.10.0 提示装 httpx2，不影响任何测试结果与接口行为。
 
