@@ -1,0 +1,8 @@
+# 【S2-TAX-008】#3261 批量导入 · 接口层依赖（第 2 版返工新增）
+# 命令行（batch_import.py 的 dry-run / apply）只用 Python 标准库，无需安装任何包；
+# 跑 HTTP 接口（app.py）与接口层测试（test_api.py）前先执行：
+#   pip install -r requirements.txt
+fastapi>=0.115
+httpx>=0.28          # fastapi.testclient.TestClient 需要
+uvicorn>=0.30        # 本地启动接口: python -m uvicorn app:app
+python-multipart>=0.0.9   # multipart 文件上传解析

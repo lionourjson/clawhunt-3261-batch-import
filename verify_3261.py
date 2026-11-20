@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""【S2-TAX-008】#3261 批量导入初稿字典 · 预做包自检脚本（全虚构数据）
+"""【S2-TAX-008】#3261 批量导入初稿字典 · 交付自检脚本（全虚构数据，第 2 版）
 
 跑通即证明：
   AC1 预演输出新增、更新、冲突、错误四类清单（CLI 真实运行 + 与 README 手工判定表逐行对照）
   AC2 重复导入同一文件不产生重复标签（init 链条两连跑：第二次 applied=0、字典字节不变）
   AC3 parent_code 不存在的行被列入错误清单（IND-ORPHAN 落错误清单、不落将新增、不进字典）
+  【第 2 版返工】接口层（app.py / FastAPI）：三个接口 dry-run / proposal / init 真实调用，
+      与 CLI 行为逐字段一致；init 权限落在请求调用者上（X-User-Roles 桩，非管理员 403 且不落盘）；
+      父级级联校验在接口上生效（父行无效 + 现库无该 code -> 子行进错误清单、不进字典）；
+      接口坏输入 400（fail-closed）
+  【第 2 版返工】父级级联：父行在错误/冲突清单且现库无该 code 时子行连锁不导入（CLI 与接口双覆盖）
   CSV/JSON 双格式一致、proposal 队列幂等、init 管理员门禁、冲突/错误行不导入、
   坏表头 fail-closed、IMPORT_ASOF 环境变量生效、输出确定性（重跑 sha256 一致）、
-  单元测试 11 条全过、README 验收对照与虚构声明在文、全包敏感扫描零命中。
+  单元测试与接口测试全过、README 验收对照与虚构声明在文、全包敏感扫描零命中。
 
-运行：python -I verify_3261.py   （EXIT=0 即自检通过）
+运行：pip install -r requirements.txt 后执行 python -I verify_3261.py   （EXIT=0 即自检通过）
 """
 import hashlib
 import json
@@ -92,6 +97,7 @@ def main():
             sys.stdout.reconfigure(encoding="utf-8")
     except Exception:
         pass
+    os.environ["IMPORT_ASOF"] = "2026-11-18"  # 输出确定性：自检全程固定业务日期
     tmp = tempfile.mkdtemp(prefix="verify3261_")
     try:
         # ---------- V1 CLI 真实运行 + 四类计数与手工判定一致 ----------
@@ -203,10 +209,17 @@ def main():
         check("V8 负例: CSV 缺列被拒绝 EXIT=1 且不落盘",
               code == 1 and "表头" in out and not os.path.exists(neg_rep))
 
-        # ---------- V9 单元测试 11 条真实运行 ----------
+        # ---------- V9 单元测试与接口测试真实运行 ----------
+        def _ran(out):
+            import re as _re
+            m = _re.search(r"Ran (\d+) test", out)
+            return m.group(1) if m else "?"
         code, out = run_py(["test_batch_import.py"])
-        check("V9 unittest 全过（含 AC1/AC2/AC3）", code == 0 and "OK" in out,
-              "ran=%s" % ("11" if "Ran 11" in out else "?"))
+        check("V9a 单元测试全过（含 AC1/AC2/AC3 与父级级联）", code == 0 and "OK" in out,
+              "ran=%s" % _ran(out))
+        code, out = run_py(["test_api.py"])
+        check("V9b 接口层测试全过（AC 在接口上的表现 + init 权限 + 级联）",
+              code == 0 and "OK" in out, "ran=%s" % _ran(out))
 
         # ---------- V10 IMPORT_ASOF 环境变量生效 ----------
         rep_asof = os.path.join(tmp, "report_asof.json")
@@ -224,7 +237,98 @@ def main():
         check("V11 同输入重跑报告 sha256 一致（确定性序列化，不含运行时刻）",
               sha256_file(rep_again) == sha256_file(rep_csv))
 
-        # ---------- V12 产出样例结果 sample_output/（确定性，可复核） ----------
+        # ---------- V12 接口层（FastAPI app.py）：三接口真实调用（第 2 版返工） ----------
+        try:
+            from fastapi.testclient import TestClient
+        except ImportError as e:
+            raise SystemExit("SELF-CHECK FAILED: 接口层依赖缺失 %s —— 先执行 pip install -r requirements.txt" % e)
+        import app as api_app
+        api_existing = os.path.join(tmp, "api_existing.json")
+        shutil.copyfile(EXISTING, api_existing)
+        api_queue = os.path.join(tmp, "api_review_queue.json")
+        api_log = os.path.join(tmp, "api_import_log.json")
+        client = TestClient(api_app.create_app(existing_path=api_existing,
+                                               queue_path=api_queue, log_path=api_log))
+        csv_bytes = open(CSV_FILE, "rb").read()
+        json_bytes = open(JSON_FILE, "rb").read()
+        ADMIN_H = {"X-User": "admin-001", "X-User-Roles": "system_admin"}
+        EDITOR_H = {"X-User": "editor-002", "X-User-Roles": "taxonomy_editor"}
+        r_api = client.post("/admin/taxonomy/import:dry-run",
+                            files={"file": ("import_v1.csv", csv_bytes, "text/csv")})
+        check("V12a 接口 dry-run(multipart CSV) 200 且计数与手工判定表一致",
+              r_api.status_code == 200 and r_api.json()["counts"] == EXPECT_COUNTS,
+              str(r_api.status_code))
+        rj_api = client.post("/admin/taxonomy/import:dry-run", content=json_bytes,
+                             headers={"Content-Type": "application/json"})
+        check("V12b 接口 dry-run(JSON 请求体) 200 且同计数（CSV 与 JSON 都支持）",
+              rj_api.status_code == 200 and rj_api.json()["counts"] == EXPECT_COUNTS)
+        _ex = bi.load_existing(api_existing)
+        _rows, _h = bi.load_rows(CSV_FILE)
+        _cli = bi.build_report(_rows, _ex, "import_v1.csv", _h)
+        check("V12c 接口报告与 CLI dry-run 报告逐字段相等（行为与命令行一致）",
+              r_api.json() == _cli)
+        r403 = client.post("/admin/taxonomy/import:init", content=csv_bytes,
+                           headers={"Content-Type": "text/csv", **EDITOR_H})
+        check("V12d 返工权限桩: 接口 init 非 system_admin（taxonomy_editor）403 且现库桩未动、日志未写",
+              r403.status_code == 403 and "system_admin" in r403.json()["detail"]
+              and sha256_file(api_existing) == sha256_file(EXISTING)
+              and not os.path.exists(api_log))
+        r403b = client.post("/admin/taxonomy/import:init", content=csv_bytes,
+                            headers={"Content-Type": "text/csv"})
+        check("V12e 返工权限桩: 匿名调用（无 X-User-Roles）同样 403", r403b.status_code == 403)
+        r_init = client.post("/admin/taxonomy/import:init", content=csv_bytes,
+                             headers={"Content-Type": "text/csv", **ADMIN_H})
+        check("V12f 返工权限桩: 同一进程换请求头 system_admin -> 200 且 applied_add=3 / applied_update=2",
+              r_init.status_code == 200 and r_init.json()["applied_add"] == 3
+              and r_init.json()["applied_update"] == 2, str(r_init.status_code))
+        api_dict_1 = sha256_file(api_existing)
+        r_init2 = client.post("/admin/taxonomy/import:init", content=csv_bytes,
+                              headers={"Content-Type": "text/csv", **ADMIN_H})
+        _codes = [t["code"] for t in read_json(api_existing)["tags"]]
+        check("V12g AC2 接口重复导入同一文件 applied=0、现库桩字节不变、15 个标签无重复",
+              r_init2.status_code == 200 and r_init2.json()["applied_add"] == 0
+              and sha256_file(api_existing) == api_dict_1
+              and len(_codes) == 15 and len(set(_codes)) == 15)
+        check("V12h AC3 接口导入后字典无错误行（IND-ORPHAN / IND-BAD-SORT / SVC-LOOP）",
+              not ({"IND-ORPHAN", "IND-BAD-SORT", "SVC-LOOP", ""} & set(_codes)))
+        q1 = client.post("/admin/taxonomy/import:proposal", content=csv_bytes,
+                         headers={"Content-Type": "text/csv"})
+        q2 = client.post("/admin/taxonomy/import:proposal", content=csv_bytes,
+                         headers={"Content-Type": "text/csv"})
+        check("V12i AC2 接口 proposal 两连跑复用同一提议（队列 1 条，幂等）",
+              q1.status_code == 200 and q2.status_code == 200
+              and q1.json()["proposal_id"] == q2.json()["proposal_id"]
+              and q2.json()["proposal_reused"] is True and q2.json()["review_queue_size"] == 1)
+        cascade_csv = ("code,name,parent_code,definition,aliases,sort_order\n"
+                       "IND-BAD-PARENT,坏父级行,,父级行 sort_order 非法（虚构）,,abc\n"
+                       "IND-CHILD-1,子级行,IND-BAD-PARENT,引用无效父级的子行（虚构）,,70\n").encode("utf-8")
+        rc = client.post("/admin/taxonomy/import:dry-run",
+                         files={"file": ("cascade.csv", cascade_csv, "text/csv")})
+        _err3 = [x for x in rc.json()["errors"] if x["row_no"] == 3]
+        check("V12j 返工级联(接口): 父行无效且现库无该 code -> 子行进错误清单（点名父行 code 与 row_no）、不在将新增",
+              rc.status_code == 200 and _err3
+              and "IND-BAD-PARENT" in "；".join(_err3[0]["reasons"])
+              and "row_no=2" in "；".join(_err3[0]["reasons"])
+              and "IND-CHILD-1" not in {x["code"] for x in rc.json()["will_add"]})
+        rc2 = client.post("/admin/taxonomy/import:init", content=cascade_csv,
+                          headers={"Content-Type": "text/csv", **ADMIN_H})
+        check("V12k 返工级联(接口): init 后现库桩无该子行",
+              rc2.status_code == 200
+              and "IND-CHILD-1" not in {t["code"] for t in read_json(api_existing)["tags"]})
+        r400a = client.post("/admin/taxonomy/import:dry-run",
+                            files={"file": ("bad.csv", b"code,name,parent_code,definition,aliases\nIND-X,X,,d,,1\n",
+                                            "text/csv")})
+        r400b = client.post("/admin/taxonomy/import:dry-run", content=b'{"not":"array"}',
+                            headers={"Content-Type": "application/json"})
+        r400c = client.post("/admin/taxonomy/import:dry-run",
+                            files={"file": ("import.txt", b"hello", "text/plain")})
+        r400d = client.post("/admin/taxonomy/import:dry-run", content=b"")
+        check("V12l 负例: 接口坏输入 400（坏表头/非 JSON 数组/不支持扩展名/空请求体），fail-closed",
+              r400a.status_code == 400 and r400b.status_code == 400
+              and r400c.status_code == 400 and r400d.status_code == 400,
+              "%d/%d/%d/%d" % (r400a.status_code, r400b.status_code, r400c.status_code, r400d.status_code))
+
+        # ---------- V13 产出样例结果 sample_output/（确定性，可复核） ----------
         if os.path.exists(SAMPLE_OUT):
             shutil.rmtree(SAMPLE_OUT)
         os.makedirs(SAMPLE_OUT)
@@ -245,21 +349,34 @@ def main():
         for args in seq:
             c, o = run_py(args, use_admin="--mode init" in " ".join(args))
             seq_ok = seq_ok and c == 0
+        # 接口响应样例（与 CLI 报告同口径；确定性序列化，不含运行时刻）
+        with open(os.path.join(SAMPLE_OUT, "api_dry_run_response.json"), "wb") as f:
+            f.write(r_api.content)
+        with open(os.path.join(SAMPLE_OUT, "api_proposal_response.json"), "wb") as f:
+            f.write(q1.content)
+        with open(os.path.join(SAMPLE_OUT, "api_init_response.json"), "wb") as f:
+            f.write(r_init.content)
         kept = sorted(os.listdir(SAMPLE_OUT))
-        check("V12 sample_output 5 文件齐备且全链 EXIT=0",
-              seq_ok and kept == ["dictionary_after_init.json", "import_log.json",
-                                  "proposals_queue.json", "report_v1_csv.json", "report_v1_json.json"],
+        check("V13a sample_output 8 文件齐备（CLI 5 + 接口响应 3）且全链 EXIT=0",
+              seq_ok and kept == ["api_dry_run_response.json", "api_init_response.json",
+                                  "api_proposal_response.json", "dictionary_after_init.json",
+                                  "import_log.json", "proposals_queue.json",
+                                  "report_v1_csv.json", "report_v1_json.json"],
               str(kept))
-        check("V12b 提议队列 1 条（两连跑幂等）",
+        check("V13b 提议队列 1 条（两连跑幂等）",
               len(read_json(os.path.join(SAMPLE_OUT, "proposals_queue.json"))["proposals"]) == 1)
-        check("V12c 导入日志 applied_add=3（首导留痕）",
+        check("V13c 导入日志 applied_add=3（首导留痕）",
               list(read_json(os.path.join(SAMPLE_OUT, "import_log.json"))["logs"].values())[0]
               ["applied_add"] == 3)
-        check("V12d 导入后字典与 V5 幂等链结果字节一致",
+        check("V13d 导入后字典与 V5 幂等链结果字节一致",
               sha256_file(os.path.join(SAMPLE_OUT, "dictionary_after_init.json")) == h1)
+        check("V13e 接口响应样例与 CLI 报告计数一致（四类清单同口径）",
+              read_json(os.path.join(SAMPLE_OUT, "api_dry_run_response.json"))["counts"] == EXPECT_COUNTS
+              and read_json(os.path.join(SAMPLE_OUT, "api_init_response.json"))["applied_add"] == 3)
 
-        # ---------- V13 全包敏感模式扫描零命中（含样例输出） ----------
-        scan_files = ["batch_import.py", "test_batch_import.py", "README.md",
+        # ---------- V14 全包敏感模式扫描零命中（含样例输出） ----------
+        scan_files = ["batch_import.py", "app.py", "test_batch_import.py", "test_api.py",
+                      "verify_3261.py", "requirements.txt", "README.md",
                       "existing_dictionary.json", "import_v1.csv", "import_v1.json"]
         scan_files += ["sample_output/" + n for n in kept]
         hits = []
@@ -270,24 +387,28 @@ def main():
                 m = __import__("re").search(pat, text)
                 if m:
                     hits.append((rel, pat, m.group(0)))
-        check("V13 全包敏感模式扫描零命中（%d 个文件）" % len(scan_files), not hits, str(hits))
+        check("V14 全包敏感模式扫描零命中（%d 个文件）" % len(scan_files), not hits, str(hits))
 
-        # ---------- V14 README 验收对照与虚构声明 ----------
+        # ---------- V15 README 验收对照、接口章节与虚构声明 ----------
         with open(README, encoding="utf-8") as f:
             rd = f.read()
         ac_lines = ["预演输出新增、更新、冲突、错误四类清单",
                     "重复导入同一文件不产生重复标签",
                     "parent_code 不存在的行被列入错误清单"]
-        check("V14 README 验收标准 3 条原句逐条在文",
+        check("V15a README 验收标准 3 条原句逐条在文",
               all(a in rd for a in ac_lines))
-        check("V14b README 含虚构数据声明与 mock 对接点",
+        check("V15b README 含虚构数据声明与 mock 对接点",
               "虚构" in rd and "taxonomy_tags" in rd and "pending_review" in rd)
-        check("V14c README 分类口径与实现一致（四类判定规则表）",
+        check("V15c README 分类口径与实现一致（四类判定规则表 + 级联口径）",
               all(s in rd for s in ("将新增 will_add", "将更新 will_update",
-                                    "冲突 conflicts", "错误 errors")))
+                                    "冲突 conflicts", "错误 errors", "父行无效")))
+        check("V15d README 接口章节与实现一致（三接口路径、权限桩请求头、requirements 安装）",
+              all(s in rd for s in ("/admin/taxonomy/import:dry-run", "/admin/taxonomy/import:proposal",
+                                    "/admin/taxonomy/import:init", "X-User-Roles", "system_admin",
+                                    "pip install -r requirements.txt", "uvicorn")))
 
         print("")
-        print("SELF-CHECK PASS (V1-V14, %d checks)" % PASS)
+        print("SELF-CHECK PASS (V1-V15, %d checks)" % PASS)
         print("EXIT=0")
         return 0
     finally:

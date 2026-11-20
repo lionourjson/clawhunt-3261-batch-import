@@ -2,11 +2,12 @@
 # -*- coding: utf-8 -*-
 """batch_import.py -- 【S2-TAX-008】#3261 会员空间平台 · 批量导入初稿字典（CSV 与 JSON）
 
-预做包（虚构演示，全部数据为自拟虚构）。实现字典批量导入命令：
+交付第 2 版（虚构演示，全部数据为自拟虚构）。实现字典批量导入命令与接口的共用核心：
   支持 CSV 与 JSON 两种格式，列为 code、name、parent_code、definition、aliases、sort_order；
   先预演（dry-run）输出 将新增 / 将更新 / 冲突 / 错误 四类清单；
   确认后正式导入：导入结果以「提议」进入复核队列（proposal 模式），
-  或在初始化模式下直接生效（init 模式，仅系统管理员可用，用环境变量 IMPORT_INIT_ADMIN=1 表示）。
+  或在初始化模式下直接生效（init 模式；CLI 仅系统管理员可用，用环境变量 IMPORT_INIT_ADMIN=1 表示；
+  HTTP 接口层见 app.py，权限按请求的调用者判定，不依赖进程环境变量）。
   重复导入同一文件是幂等的（按文件内容 sha256 键控：第二次导入 applied=0，不产生重复标签、不产生重复提议）。
 
 用法:
@@ -15,20 +16,27 @@
   直生效: python -I batch_import.py apply --mode init --existing existing_dictionary.json --file import_v1.csv \
               --out-dict dictionary_after.json --queue import_log.json
           （init 模式要求环境变量 IMPORT_INIT_ADMIN=1，否则拒绝执行）
+  接口:   pip install -r requirements.txt && python -m uvicorn app:app --port 8321
+          （POST /admin/taxonomy/import:dry-run / import:proposal / import:init，见 app.py 与 README）
 
 分类口径（详见 README.md）:
-  将新增 will_add    : code 不在现库
-  将更新 will_update : code 在现库且字段内容有差异（逐字段记录 old/new）
+  将新增 will_add    : code 不在现库，且父级级联校验通过（见下）
+  将更新 will_update : code 在现库且字段内容有差异（逐字段记录 old/new），且父级级联校验通过
   冲突   conflicts   : 文件内同 code 多行且内容不一致 / code 对应已软删除标签 / name 与现库其他 code 撞名
   错误   errors      : 缺 code 或 name / code 格式非法 / sort_order 非整数 /
-                       parent_code 等于自身 / parent_code 不存在（不在现库有效标签、也不在本文件）
+                       parent_code 等于自身 / parent_code 不存在（不在现库、也不在本文件）/
+                       parent_code 指向已软删除标签 /
+                       parent_code 指向本文件内不会被导入的父行（父行在错误或冲突清单，
+                       或父行自身因父级无效连带不导入，且现库无该 code；多级连锁一并拦下，
+                       原因点名父行 code 与文件行号）
   unchanged          : 与现库完全一致（不算变更，不导入）
   ignored_duplicates : 文件内完全重复的行（保留第一行，其余忽略）
 冲突与错误的行一律不导入（fail-closed）。
 
 对接点（mock，写进 README）：现库字典与复核队列目前用 JSON 文件桩，
 正式对接 S2-CRM「字典与标签中心」标签表（taxonomy_tags / review_queue）。
-配置从环境变量读：IMPORT_ASOF（业务日期，缺省 2026-11-18）、IMPORT_INIT_ADMIN（初始化模式管理员开关）。
+配置从环境变量读：IMPORT_ASOF（业务日期，缺省 2026-11-18）、IMPORT_INIT_ADMIN（CLI 初始化模式管理员开关）、
+TAXO_IMPORT_EXISTING / TAXO_IMPORT_QUEUE / TAXO_IMPORT_DICT_OUT / TAXO_IMPORT_LOG（接口层文件桩路径，见 app.py）。
 输出为确定性序列化（不含运行时刻），同输入重复运行字节一致。
 """
 import argparse
@@ -100,14 +108,20 @@ def load_rows(path):
     rows: [{row_no, values:{六列原始值或 None}, structural_errors:[...]}]"""
     with open(path, "rb") as f:
         raw = f.read()
+    return load_rows_bytes(raw, os.path.basename(path))
+
+
+def load_rows_bytes(raw, source_name):
+    """从内存字节读取导入文件（按 source_name 扩展名分派 csv/json），返回 (rows, source_hash)。
+    接口层（app.py）上传内容用；与 load_rows 同一套解析，保证接口与命令行行为一致。"""
     h = sha256_bytes(raw)
-    ext = os.path.splitext(path)[1].lower()
+    ext = os.path.splitext(source_name or "")[1].lower()
     if ext == ".csv":
         rows = _load_csv(raw)
     elif ext == ".json":
         rows = _load_json(raw)
     else:
-        raise AssertionError("不支持的文件类型 %s（仅 .csv / .json）" % ext)
+        raise AssertionError("不支持的文件类型 %r（仅 .csv / .json）" % (ext or source_name or "(无文件名)"))
     return rows, h
 
 
@@ -196,7 +210,8 @@ def build_report(rows, existing, source_name, source_hash):
                           "raw_sort_order": r["values"]["sort_order"],
                           "structural_errors": list(r["structural_errors"])})
 
-    # 文件内可用作父级的 code 集合（非空 code，不论该行自身是否还有其他错误）
+    # 文件内出现过的 code（仅作「存在性」检查：父 code 在本文件出现过即可通过第 1 步；
+    # 父行自身是否会被导入由第 4 步级联校验判定，避免「父行在文件里但自身无效」漏判）
     file_codes = {rn["n"]["code"] for rn in norm_rows if rn["n"]["code"]}
     active_existing = {c: t for c, t in existing.items() if not t["deleted_at"]}
 
@@ -218,7 +233,7 @@ def build_report(rows, existing, source_name, source_hash):
         if pc is not None:
             if pc == n["code"]:
                 reasons.append("parent_code 等于自身 code（%s）" % pc)
-            elif pc not in file_codes and pc not in active_existing:
+            elif pc not in file_codes and pc not in existing:
                 reasons.append("parent_code 不存在: %s（既不在现库有效标签，也不在本文件中）" % pc)
             elif pc in existing and existing[pc]["deleted_at"]:
                 reasons.append("parent_code 指向已软删除标签: %s" % pc)
@@ -248,8 +263,11 @@ def build_report(rows, existing, source_name, source_hash):
                                            "reason": "文件内完全重复行（保留首行 row_no=%d）" % grp[0]["row_no"]})
     unique_rows.sort(key=lambda rn: rn["row_no"])
 
-    # 第 3 步：与现库比对分类
-    will_add, will_update, unchanged = [], [], []
+    # 第 3 步：与现库比对分类（冲突之外得到「将新增候选」与「将更新候选」，
+    #          是否成立由第 4 步父级级联校验决定）
+    add_candidates, will_update, unchanged = [], [], []
+    upd_parent = {}   # code -> 将更新行的新 parent_code（第 4 步校验用）
+    upd_meta = {}     # code -> (行号, name)（级联拒绝写错误清单用）
     taken_names = {t["name"]: c for c, t in active_existing.items()}
     for rn in unique_rows:
         n = rn["n"]
@@ -268,6 +286,8 @@ def build_report(rows, existing, source_name, source_hash):
                 changes["aliases"] = {"old": old["aliases"], "new": n["aliases"]}
             if changes:
                 will_update.append({"row_no": rn["row_no"], "code": code, "changes": changes})
+                upd_parent[code] = n["parent_code"]
+                upd_meta[code] = (rn["row_no"], n["name"])
             else:
                 unchanged.append({"row_no": rn["row_no"], "code": code, "note": "与现库完全一致"})
         else:
@@ -275,9 +295,73 @@ def build_report(rows, existing, source_name, source_hash):
                 conflicts.append({"row_no": rn["row_no"], "code": code, "name": n["name"],
                                   "reason": "name 撞名: 与现库 code=%s 的名称重复（name 必须唯一）" % taken_names[n["name"]]})
             else:
-                will_add.append({"row_no": rn["row_no"], "code": code, "name": n["name"],
-                                 "parent_code": n["parent_code"], "definition": n["definition"],
-                                 "aliases": n["aliases"], "sort_order": n["sort_order"]})
+                add_candidates.append({"row_no": rn["row_no"], "code": code, "name": n["name"],
+                                       "parent_code": n["parent_code"], "definition": n["definition"],
+                                       "aliases": n["aliases"], "sort_order": n["sort_order"]})
+
+    # 第 4 步：父级级联校验（不动点迭代，fail-closed）。
+    # 「将新增候选」的每一行，parent_code 必须落在「导入后确实存在」的集合里：
+    #   现库有效标签，或本轮同样被接受的将新增行。父行在本文件里但自身进了
+    #   错误清单或冲突清单、且现库无该 code 时，引用它的子行进错误清单，
+    #   原因点名父行 code 与文件行号；其下各级随之连锁不导入（多级同理，
+    #   不动点迭代直到不再有新拒绝，A→B→A 环同样全部拒绝）。
+    # 将更新行的 code 在现库已存在，不影响其子行的判定；只校验它自己的新 parent_code，
+    # 新父级不可解析时该行整体不导入（fail-closed），现库保持原值。
+    code_rows_map = {}   # 文件内 code -> 出现过的全部行号（点名父行用）
+    for rn in norm_rows:
+        c = rn["n"]["code"]
+        if c:
+            code_rows_map.setdefault(c, []).append(rn["row_no"])
+    for v in code_rows_map.values():
+        v.sort()
+
+    accepted_codes = set()
+    pending = add_candidates
+    while True:
+        rest = [c for c in pending
+                if not (c["parent_code"] is None or c["parent_code"] in active_existing
+                        or c["parent_code"] in accepted_codes)]
+        if len(rest) == len(pending):
+            break
+        for c in pending:
+            pc = c["parent_code"]
+            if pc is None or pc in active_existing or pc in accepted_codes:
+                accepted_codes.add(c["code"])
+        pending = rest
+    rejected_adds = pending
+    will_add = [c for c in add_candidates if c["code"] in accepted_codes]
+
+    # 级联拒绝的原因：点名父行 code 与文件行号（错误清单 / 冲突清单 / 连带不导入）
+    err_codes = {e["code"] for e in errors if e["code"] != "-"}
+    conflict_codes = {c["code"] for c in conflicts}
+
+    def _parent_fate(pc):
+        in_err, in_cfl = pc in err_codes, pc in conflict_codes
+        if in_err and in_cfl:
+            fate = "进入错误与冲突清单"
+        elif in_err:
+            fate = "进入错误清单"
+        elif in_cfl:
+            fate = "进入冲突清单"
+        else:
+            fate = "因父级无效连带不导入"
+        rows_txt = "、".join(str(x) for x in code_rows_map.get(pc, ["?"]))
+        return ("父行无效, 本行随之不导入: parent_code=%s（文件内 row_no=%s 的父行%s，现库无该 code）"
+                % (pc, rows_txt, fate))
+
+    for cand in rejected_adds:
+        errors.append({"row_no": cand["row_no"], "code": cand["code"], "name": cand["name"],
+                       "reasons": [_parent_fate(cand["parent_code"])]})
+    kept_updates = []
+    for upd in will_update:
+        pc = upd_parent[upd["code"]]
+        if pc is not None and pc not in active_existing and pc not in accepted_codes:
+            row_no, name = upd_meta[upd["code"]]
+            errors.append({"row_no": row_no, "code": upd["code"], "name": name,
+                           "reasons": [_parent_fate(pc)]})
+        else:
+            kept_updates.append(upd)
+    will_update = kept_updates
 
     will_update.sort(key=lambda x: x["row_no"])
     conflicts.sort(key=lambda x: x["row_no"])
@@ -331,12 +415,16 @@ def _write(path, obj):
         f.write(dumps(obj))
 
 
-def apply_proposal(existing_path, file_path, queue_path, report_path=None):
+def apply_proposal(existing_path, file_path, queue_path, report_path=None, content=None, source_name=None):
     """proposal 模式：导入结果以「提议」进入复核队列（不直接改字典）。
-    幂等：同一文件（内容 sha256 相同）重复导入复用已有提议，不产生重复提议。"""
+    幂等：同一文件（内容 sha256 相同）重复导入复用已有提议，不产生重复提议。
+    content 不为 None 时从内存字节读取导入文件（接口层用），source_name 指定文件名。"""
     existing = load_existing(existing_path)
-    rows, h = load_rows(file_path)
-    report = build_report(rows, existing, file_path, h)
+    if content is not None:
+        rows, h = load_rows_bytes(content, source_name or file_path or "upload")
+    else:
+        rows, h = load_rows(file_path)
+    report = build_report(rows, existing, source_name or file_path, h)
     proposal_id = "IMP-" + h[:8]
     queue = {"proposals": {}}
     if os.path.exists(queue_path):
@@ -368,16 +456,23 @@ def apply_proposal(existing_path, file_path, queue_path, report_path=None):
     return report, proposal_id, reused
 
 
-def apply_init(existing_path, file_path, out_dict_path, log_path, report_path=None):
+def apply_init(existing_path, file_path, out_dict_path, log_path, report_path=None,
+               content=None, source_name=None, admin_confirmed=False):
     """init 模式：将新增/将更新直接生效（冲突与错误一律不导入）。
-    仅系统管理员可用：要求环境变量 IMPORT_INIT_ADMIN=1。
+    仅系统管理员可用：CLI 要求环境变量 IMPORT_INIT_ADMIN=1（进程级开关）；
+    HTTP 接口层先按请求调用者完成权限判定后传 admin_confirmed=True（见 app.py），
+    二者必居其一，缺省两者皆无时拒绝执行（fail-closed）。
+    content 不为 None 时从内存字节读取导入文件（接口层用），source_name 指定文件名。
     幂等：同一文件第二次导入 applied=0，字典文件字节不变。"""
-    if os.environ.get(ENV_INIT_ADMIN, "") != "1":
+    if not admin_confirmed and os.environ.get(ENV_INIT_ADMIN, "") != "1":
         raise AssertionError(
             "init 模式仅系统管理员可用：请设置环境变量 %s=1（当前未设置或值不为 1）" % ENV_INIT_ADMIN)
     existing = load_existing(existing_path)
-    rows, h = load_rows(file_path)
-    report = build_report(rows, existing, file_path, h)
+    if content is not None:
+        rows, h = load_rows_bytes(content, source_name or file_path or "upload")
+    else:
+        rows, h = load_rows(file_path)
+    report = build_report(rows, existing, source_name or file_path, h)
     d = asof()
     n_add = n_upd = 0
     for it in report["will_add"]:
